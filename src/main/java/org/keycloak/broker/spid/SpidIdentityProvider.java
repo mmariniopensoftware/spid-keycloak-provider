@@ -114,6 +114,7 @@ public class SpidIdentityProvider extends AbstractIdentityProvider<SpidIdentityP
 
     @Override
     public Response performLogin(AuthenticationRequest request) {
+        logger.error("Siamo nel PERFORM LOGIN!!!");
         try {
             UriInfo uriInfo = request.getUriInfo();
             RealmModel realm = request.getRealm();
@@ -128,6 +129,7 @@ public class SpidIdentityProvider extends AbstractIdentityProvider<SpidIdentityP
             String protocolBinding = JBossSAMLURIConstants.SAML_HTTP_REDIRECT_BINDING.get();
 
             String assertionConsumerServiceUrl = request.getRedirectUri();
+            logger.error("assertionConsumerServiceUrl:" +assertionConsumerServiceUrl);
 
             if (getConfig().isPostBindingResponse()) {
                 protocolBinding = JBossSAMLURIConstants.SAML_HTTP_POST_BINDING.get();
@@ -186,6 +188,9 @@ public class SpidIdentityProvider extends AbstractIdentityProvider<SpidIdentityP
             }
 
             AuthnRequestType authnRequest = authnRequestBuilder.createAuthnRequest();
+            // TODO LOGG
+            logger.error("TEST:" + authnRequest.getProtocolBinding());
+            
             for(Iterator<SamlAuthenticationPreprocessor> it = SamlSessionUtils.getSamlAuthenticationPreprocessorIterator(session); it.hasNext(); ) {
                 authnRequest = it.next().beforeSendingLoginRequest(authnRequest, request.getAuthenticationSession());
             }

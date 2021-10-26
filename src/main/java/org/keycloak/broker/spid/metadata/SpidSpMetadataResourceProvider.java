@@ -15,7 +15,9 @@
 package org.keycloak.broker.spid.metadata;
 
 import org.jboss.logging.Logger;
-
+import org.keycloak.broker.provider.IdentityProviderMapper;
+import org.keycloak.broker.spid.SpidIdentityProvider;
+import org.keycloak.broker.spid.SpidIdentityProviderFactory;
 import org.keycloak.common.util.PemUtils;
 import org.keycloak.crypto.Algorithm;
 import org.keycloak.crypto.KeyStatus;
@@ -31,30 +33,24 @@ import org.keycloak.dom.saml.v2.metadata.LocalizedNameType;
 import org.keycloak.dom.saml.v2.metadata.LocalizedURIType;
 import org.keycloak.dom.saml.v2.metadata.OrganizationType;
 import org.keycloak.dom.saml.v2.metadata.SPSSODescriptorType;
-import org.keycloak.models.KeyManager;
 import org.keycloak.models.IdentityProviderModel;
+import org.keycloak.models.KeyManager;
 import org.keycloak.models.KeycloakSession;
 import org.keycloak.models.RealmModel;
+import org.keycloak.protocol.saml.SamlService;
+import org.keycloak.protocol.saml.mappers.SamlMetadataDescriptorUpdater;
 import org.keycloak.saml.SPMetadataDescriptor;
 import org.keycloak.saml.common.constants.JBossSAMLURIConstants;
+import org.keycloak.saml.common.exceptions.ConfigurationException;
 import org.keycloak.saml.common.util.DocumentUtil;
 import org.keycloak.saml.common.util.StaxUtil;
 import org.keycloak.saml.common.util.StringUtil;
-import org.keycloak.saml.common.exceptions.ConfigurationException;
-import org.keycloak.saml.processing.core.saml.v2.writers.SAMLMetadataWriter;
 import org.keycloak.saml.processing.api.saml.v2.sig.SAML2Signature;
-import org.keycloak.protocol.saml.SamlService;
-import org.keycloak.protocol.saml.mappers.SamlMetadataDescriptorUpdater;
+import org.keycloak.saml.processing.core.saml.v2.writers.SAMLMetadataWriter;
 import org.keycloak.services.resource.RealmResourceProvider;
-
-import java.io.StringWriter;
-import java.net.URI;
-import java.net.URISyntaxException;
-import java.security.KeyPair;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Objects;
-import java.util.stream.Collectors;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
 
 import javax.ws.rs.GET;
 import javax.ws.rs.Produces;
@@ -62,23 +58,27 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import javax.ws.rs.core.UriBuilder;
 import javax.ws.rs.core.UriInfo;
-
 import javax.xml.crypto.dsig.CanonicalizationMethod;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.stream.XMLStreamWriter;
+import java.io.StringWriter;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.security.KeyPair;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.Node;
-import org.keycloak.broker.provider.IdentityProviderMapper;
-import org.keycloak.broker.spid.SpidIdentityProvider;
-import org.keycloak.broker.spid.SpidIdentityProviderFactory;
+import static org.keycloak.broker.spid.metadata.Utils.*;
 
 public class SpidSpMetadataResourceProvider implements RealmResourceProvider {
     protected static final Logger logger = Logger.getLogger(SpidSpMetadataResourceProvider.class);
 
     public static final String XMLNS_NS = "http://www.w3.org/2000/xmlns/";
     public static final String SPID_METADATA_EXTENSIONS_NS = "https://spid.gov.it/saml-extensions";
+    public static final String SPID_METADATA_INVOICING_EXTENSIONS_NS = "https://spid.gov.it/invoicing-extensions";
 
     private KeycloakSession session;
 
@@ -222,24 +222,12 @@ public class SpidSpMetadataResourceProvider implements RealmResourceProvider {
 
             String strOrganizationUrls = firstSpidProvider.getConfig().getOrganizationUrls();
             String[] organizationUrls = strOrganizationUrls != null ? strOrganizationUrls.split(","): null;
-
-            boolean isSpPrivate = firstSpidProvider.getConfig().isSpPrivate();
-            String ipaCode = firstSpidProvider.getConfig().getIpaCode();
-            String vatNumber = firstSpidProvider.getConfig().getVatNumber();
-            String fiscalCode = firstSpidProvider.getConfig().getFiscalCode();
-            String otherContactPersonCompany = firstSpidProvider.getConfig().getOtherContactCompany();
-            String otherContactPersonEmail = firstSpidProvider.getConfig().getOtherContactEmail();
-            String otherContactPersonPhone = firstSpidProvider.getConfig().getOtherContactPhone();
-            String billingContactPersonCompany = firstSpidProvider.getConfig().getBillingContactCompany();
-            String billingContactPersonEmail = firstSpidProvider.getConfig().getBillingContactEmail(); 
-            String billingContactPersonPhone = firstSpidProvider.getConfig().getBillingContactPhone();
-
-			// Additional EntityDescriptor customizations
-            customizeEntityDescriptor(entityDescriptor, 
-                organizationNames, organizationDisplayNames, organizationUrls,
-                isSpPrivate, ipaCode, vatNumber, fiscalCode,
-                otherContactPersonCompany, otherContactPersonEmail, otherContactPersonPhone,
-                billingContactPersonCompany, billingContactPersonEmail, billingContactPersonPhone);
+    
+            final Optional<BillingContactInfo> billingContact = Utils.mapToBillingContact.apply(firstSpidProvider.getConfig());
+            final Optional<OtherContactInfo> otherContact = Utils.mapToOtherContact.apply(firstSpidProvider.getConfig());
+    
+            // Additional EntityDescriptor customizations
+            customizeEntityDescriptor(entityDescriptor, organizationNames, organizationDisplayNames, organizationUrls, otherContact, billingContact);
 
             // Additional SPSSODescriptor customizations
             List<URI> assertionEndpoints = lstSpidIdentityProviders.stream()
@@ -313,11 +301,9 @@ public class SpidSpMetadataResourceProvider implements RealmResourceProvider {
             return configEntityId;
     }
 
-    private static void customizeEntityDescriptor(EntityDescriptorType entityDescriptor,
-        String[] organizationNames, String[] organizationDisplayNames, String[] organizationUrls,
-        boolean isSpPrivate, String ipaCode, String vatNumber, String fiscalCode,
-        String otherContactPersonCompany, String otherContactPersonEmail, String otherContactPersonPhone,
-        String billingContactPersonCompany, String billingContactPersonEmail, String billingContactPersonPhone) 
+    public static void customizeEntityDescriptor(EntityDescriptorType entityDescriptor,
+                                                  String[] organizationNames, String[] organizationDisplayNames, String[] organizationUrls,
+                                                  Optional<OtherContactInfo> otherContact, Optional<BillingContactInfo> billingContact)
         throws ConfigurationException
     {
         // Organization
@@ -364,84 +350,153 @@ public class SpidSpMetadataResourceProvider implements RealmResourceProvider {
                     organizationType.addOrganizationURL(organizationUrl);
                 }
             }
-
-            // ContactPerson type=OTHER
-            if (!StringUtil.isNullOrEmpty(otherContactPersonCompany) || !StringUtil.isNullOrEmpty(otherContactPersonEmail) || !StringUtil.isNullOrEmpty(otherContactPersonPhone)) 
-            {
-                ContactType otherContactPerson = new ContactType(ContactTypeType.OTHER);
-
-                if (!StringUtil.isNullOrEmpty(otherContactPersonCompany)) otherContactPerson.setCompany(otherContactPersonCompany);
-                if (!StringUtil.isNullOrEmpty(otherContactPersonEmail)) otherContactPerson.addEmailAddress(otherContactPersonEmail);
-                if (!StringUtil.isNullOrEmpty(otherContactPersonPhone)) otherContactPerson.addTelephone(otherContactPersonPhone);
-
-                // Extensions
-                if (otherContactPerson.getExtensions() == null)
-                    otherContactPerson.setExtensions(new ExtensionsType());
-
-                Document doc = DocumentUtil.createDocument();
-
-                if (!isSpPrivate)
-                {
-                    // Public SP Extensions
-                        
-                    // IPA Code
-                    if (!StringUtil.isNullOrEmpty(ipaCode))
-                    {
-                        Element ipaCodeElement = doc.createElementNS(SPID_METADATA_EXTENSIONS_NS, "spid:IPACode");
-                        ipaCodeElement.setAttributeNS(XMLNS_NS, "xmlns:spid", SPID_METADATA_EXTENSIONS_NS);
-                        ipaCodeElement.setTextContent(ipaCode);
-                        otherContactPerson.getExtensions().addExtension(ipaCodeElement);
-                    }
     
-                    // Public qualifier
-                    Element spTypeElement = doc.createElementNS(SPID_METADATA_EXTENSIONS_NS, "spid:Public");
-                    spTypeElement.setAttributeNS(XMLNS_NS, "xmlns:spid", SPID_METADATA_EXTENSIONS_NS);
-                    otherContactPerson.getExtensions().addExtension(spTypeElement);
+            boolean isSpPrivate =otherContact.isPresent() && otherContact.get().isSpPrivate();
+            
+            if (isSpPrivate) {
+                if (otherContact.isPresent()) {
+                    entityDescriptor.addContactPerson(createContactTypeOtherPrivate(otherContact.get()));
                 }
-                else
-                {
-                    // Private SP Extensions
-                        
-                    // VAT Number
-                    if (!StringUtil.isNullOrEmpty(vatNumber))
-                    {
-                        Element vatNumberElement = doc.createElementNS(SPID_METADATA_EXTENSIONS_NS, "spid:VATNumber");
-                        vatNumberElement.setAttributeNS(XMLNS_NS, "xmlns:spid", SPID_METADATA_EXTENSIONS_NS);
-                        vatNumberElement.setTextContent(vatNumber);
-                        otherContactPerson.getExtensions().addExtension(vatNumberElement);
-                    }
-
-                    // Fiscal Code	
-                    if (!StringUtil.isNullOrEmpty(fiscalCode))
-                    {
-                        Element fiscalCodeElement = doc.createElementNS(SPID_METADATA_EXTENSIONS_NS, "spid:FiscalCode");
-                        fiscalCodeElement.setAttributeNS(XMLNS_NS, "xmlns:spid", SPID_METADATA_EXTENSIONS_NS);
-                        fiscalCodeElement.setTextContent(fiscalCode);
-                        otherContactPerson.getExtensions().addExtension(fiscalCodeElement);
-                    }
-
-                    // Private qualifier
-                    Element spTypeElement = doc.createElementNS(SPID_METADATA_EXTENSIONS_NS, "spid:Private");
-                    spTypeElement.setAttributeNS(XMLNS_NS, "xmlns:spid", SPID_METADATA_EXTENSIONS_NS);
-                    otherContactPerson.getExtensions().addExtension(spTypeElement);
+                if (billingContact.isPresent()){
+                    entityDescriptor.addContactPerson(createContactTypeBillingPrivate(billingContact.get()));
                 }
-
-                entityDescriptor.addContactPerson(otherContactPerson);
+                
+            } else if (otherContact.isPresent()) {
+                entityDescriptor.addContactPerson(createContactTypeOtherPA(otherContact.get()));
             }
-
-            // ContactPerson type=BILLING
-            if (!StringUtil.isNullOrEmpty(billingContactPersonCompany) || !StringUtil.isNullOrEmpty(billingContactPersonEmail) || !StringUtil.isNullOrEmpty(billingContactPersonPhone)) {
-                ContactType billingContactPerson = new ContactType(ContactTypeType.BILLING);
-
-                if (!StringUtil.isNullOrEmpty(billingContactPersonCompany)) billingContactPerson.setCompany(billingContactPersonCompany);
-                if (!StringUtil.isNullOrEmpty(billingContactPersonEmail)) billingContactPerson.addEmailAddress(billingContactPersonEmail);
-                if (!StringUtil.isNullOrEmpty(billingContactPersonPhone)) billingContactPerson.addTelephone(billingContactPersonPhone);
-
-                entityDescriptor.addContactPerson(billingContactPerson);
-            }
-
             entityDescriptor.setOrganization(organizationType);
         }
+    }
+    
+    private static ContactType createContactTypeOtherPrivate(OtherContactInfo otherContact) throws ConfigurationException {
+        // Private SP Extensions
+        ContactType otherContactPerson = new ContactType(ContactTypeType.OTHER);
+        Document docOtherCt = DocumentUtil.createDocument();
+    
+        // Extensions
+        if (otherContactPerson.getExtensions() == null)
+            otherContactPerson.setExtensions(new ExtensionsType());
+    
+        if (!StringUtil.isNullOrEmpty(otherContact.getCompany()))
+            otherContactPerson.setCompany(otherContact.getCompany());
+        if (!StringUtil.isNullOrEmpty(otherContact.getEmail()))
+            otherContactPerson.addEmailAddress(otherContact.getEmail());
+        if (!StringUtil.isNullOrEmpty(otherContact.getPhone()))
+            otherContactPerson.addTelephone(otherContact.getPhone());
+    
+        // VAT Number
+        final Optional<Element> elVatNumber = createElementNS(docOtherCt, SPID_METADATA_EXTENSIONS_NS, "xmlns:spid", "spid:VATNumber", otherContact.getVatNumber());
+        if (elVatNumber.isPresent()) {
+            otherContactPerson.getExtensions().addExtension(elVatNumber.get());
+        }
+    
+        // Fiscal Code
+        final Optional<Element> elFiscalCode = createElementNS(docOtherCt, SPID_METADATA_EXTENSIONS_NS, "xmlns:spid", "spid:FiscalCode", otherContact.getFiscalCode());
+        if (elFiscalCode.isPresent()){
+            otherContactPerson.getExtensions().addExtension(elFiscalCode.get());
+        }
+    
+        // Private qualifier
+        Element spTypeElement = docOtherCt.createElementNS(SPID_METADATA_EXTENSIONS_NS, "spid:Private");
+        spTypeElement.setAttributeNS(XMLNS_NS, "xmlns:spid", SPID_METADATA_EXTENSIONS_NS);
+        otherContactPerson.getExtensions().addExtension(spTypeElement);
+        return otherContactPerson;
+    }
+    
+    private static ContactType createContactTypeBillingPrivate(BillingContactInfo billContact) throws ConfigurationException {
+    
+        ContactType billingContactTag = new ContactType(ContactTypeType.BILLING);
+        
+        if (!StringUtil.isNullOrEmpty(billContact.getCompany())) {
+            billingContactTag.setCompany(billContact.getCompany());
+        }
+        if (!StringUtil.isNullOrEmpty(billContact.getEmail())) {
+            billingContactTag.addEmailAddress(billContact.getEmail());
+        }
+    
+        if (!StringUtil.isNullOrEmpty(billContact.getPhone())) {
+            billingContactTag.addTelephone(billContact.getPhone());
+        }
+    
+        // Extensions
+        if (billingContactTag.getExtensions() == null) {
+            billingContactTag.setExtensions(new ExtensionsType());
+        }
+    
+        Document docBillingCt = DocumentUtil.createDocument();
+        final Optional<Element> elIdPaese = createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:IdPaese", billContact.getVatCountryCode());
+        final Optional<Element> elIdCodice= createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:IdCodice", billContact.getVatNumber());
+    
+        final Element pIvaCodFiscaleElemt = createEmptyElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:IdFiscaleIVA");
+        appendChild(pIvaCodFiscaleElemt, elIdCodice);
+        appendChild(pIvaCodFiscaleElemt, elIdPaese);
+    
+        final Optional<Element> elDenominazione = createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:Denominazione", billContact.getRegistryName());
+        final Element elAnagrafica = createEmptyElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:Anagrafica");
+        appendChild(elAnagrafica, elDenominazione);
+    
+        final Element elDatiAnagrafici = createEmptyElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:DatiAnagrafici");
+        appendChild(elDatiAnagrafici, Optional.ofNullable(pIvaCodFiscaleElemt));
+        appendChild(elDatiAnagrafici, Optional.ofNullable(elAnagrafica));
+    
+        Element elSede = null;
+        if (billContact.getSite() != null) {
+            final SiteInfo site = billContact.getSite();
+            final Optional<Element> elIndirizzo = createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:Indirizzo", site.getAddress());
+            final Optional<Element> elNumeroCivico = createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:NumeroCivico", site.getNumber());
+            final Optional<Element> elCap = createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:CAP", site.getPostalCode());
+            final Optional<Element> elComune = createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:Comune", site.getCity());
+            final Optional<Element> elProvincia = createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:Provincia", site.getProvince());
+            final Optional<Element> elNazione = createElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:Nazione", site.getCountryCode());
+            elSede = createEmptyElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:Sede");
+            appendChild(elSede, elIndirizzo);
+            appendChild(elSede, elNumeroCivico);
+            appendChild(elSede, elCap);
+            appendChild(elSede, elComune);
+            appendChild(elSede, elProvincia);
+            appendChild(elSede, elNazione);
+        }
+    
+        final Element elCessionarioCommittente = createEmptyElementNS(docBillingCt, SPID_METADATA_INVOICING_EXTENSIONS_NS, "xmlns:fpa", "fpa:CessionarioCommittente");
+        elCessionarioCommittente.appendChild(elDatiAnagrafici);
+        if (elSede != null) {
+            elCessionarioCommittente.appendChild(elSede);
+        }
+    
+        billingContactTag.getExtensions().addExtension(elCessionarioCommittente);
+        return billingContactTag;
+    }
+    
+    private static ContactType createContactTypeOtherPA(OtherContactInfo otherContact) throws ConfigurationException {
+        ContactType otherContactTag = new ContactType(ContactTypeType.OTHER);
+        if (!StringUtil.isNullOrEmpty(otherContact.getCompany()))
+            otherContactTag.setCompany(otherContact.getCompany());
+        if (!StringUtil.isNullOrEmpty(otherContact.getEmail()))
+            otherContactTag.addEmailAddress(otherContact.getEmail());
+        if (!StringUtil.isNullOrEmpty(otherContact.getPhone()))
+            otherContactTag.addTelephone(otherContact.getPhone());
+    
+        // Extensions
+        if (otherContactTag.getExtensions() == null)
+            otherContactTag.setExtensions(new ExtensionsType());
+    
+        Document doc = DocumentUtil.createDocument();
+        // Public SP Extensions
+    
+        // IPA Code
+        if (!StringUtil.isNullOrEmpty(otherContact.getIpaCode())) {
+            Element ipaCodeElement = doc.createElementNS(SPID_METADATA_EXTENSIONS_NS, "spid:IPACode");
+            ipaCodeElement.setAttributeNS(XMLNS_NS, "xmlns:spid", SPID_METADATA_EXTENSIONS_NS);
+            ipaCodeElement.setTextContent(otherContact.getIpaCode());
+            otherContactTag.getExtensions().addExtension(ipaCodeElement);
+        }
+    
+        // Public qualifier
+        Element spTypeElement = doc.createElementNS(SPID_METADATA_EXTENSIONS_NS, "spid:Public");
+        spTypeElement.setAttributeNS(XMLNS_NS, "xmlns:spid", SPID_METADATA_EXTENSIONS_NS);
+        otherContactTag.getExtensions().addExtension(spTypeElement);
+        
+        return otherContactTag;
     }
 
     private static void customizeSpDescriptor(SPSSODescriptorType spDescriptor,
