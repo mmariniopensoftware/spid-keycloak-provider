@@ -1,6 +1,10 @@
-package org.keycloak.broker.spid.metadata;
+package org.keycloak.broker.spid.metadata.contacttype;
 
-public class SiteInfo {
+/**
+ * Properties for node Sede
+ * @see  {@link https://spid.gov.it/invoicing-extensions}
+ */
+public class OfficeInfo {
     
     private String address;
     private String number;

@@ -1,12 +1,15 @@
-package org.keycloak.broker.spid.metadata;
+package org.keycloak.broker.spid.metadata.contacttype;
 
+/**
+ * Properties for ContactPerson contactType="billing"
+ */
 public class BillingContactInfo {
     
     private String company;
     private String phone;
     private String email;
     private String registryName;
-    private SiteInfo site;
+    private OfficeInfo office;
     private String vatNumber;
     private String vatCountryCode;
     
@@ -42,12 +45,12 @@ public class BillingContactInfo {
         this.registryName = registryName;
     }
     
-    public SiteInfo getSite() {
-        return site;
+    public OfficeInfo getOffice() {
+        return office;
     }
     
-    public void setSite(SiteInfo site) {
-        this.site = site;
+    public void setOffice(OfficeInfo office) {
+        this.office = office;
     }
     
     public String getVatNumber() {

@@ -1,5 +1,8 @@
-package org.keycloak.broker.spid.metadata;
+package org.keycloak.broker.spid.metadata.contacttype;
 
+/**
+ * Properties for ContactPerson contactType="other"
+ */
 public class OtherContactInfo {
     
     private boolean isSpPrivate;

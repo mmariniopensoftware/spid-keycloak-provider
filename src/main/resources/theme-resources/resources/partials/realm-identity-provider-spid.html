@@ -12,7 +12,8 @@
         <fieldset>
             <div class="form-group clearfix">
                 <label class="col-md-2 control-label" for="redirectUri">{{:: 'redirect-uri' | translate}}</label>
-                <div class="col-sm-6"><input class="form-control" id="redirectUri" type="text" value="{{callbackUrl}}{{identityProvider.alias}}/endpoint" readonly kc-select-action="click">
+                <div class="col-sm-6">
+                    <input class="form-control" id="redirectUri" type="text" value="{{callbackUrl}}{{identityProvider.alias}}/endpoint" readonly kc-select-action="click">
                 </div>
                 <kc-tooltip>{{:: 'redirect-uri.tooltip' | translate}}</kc-tooltip>
             </div>
@@ -427,11 +428,11 @@
                 <kc-tooltip>{{:: 'identity-provider.spid.site.address.billing' | translate}}</kc-tooltip>
             </div>
             <div class="form-group" data-ng-show="identityProvider.config.otherContactIsSpPrivate == 'true'">
-                <label class="col-md-2 control-label" for="billingContactSiteNumber">{{:: 'identity-provider.spid.site.number.billing.tooltip' | translate}}</label>
+                <label class="col-md-2 control-label" for="billingContactSiteNumber">{{:: 'identity-provider.spid.site.addressNumber.billing.tooltip' | translate}}</label>
                 <div class="col-md-6">
                     <input class="form-control" id="billingContactSiteNumber" type="text" ng-model="identityProvider.config.billingContactSiteNumber"/>
                 </div>
-                <kc-tooltip>{{:: 'identity-provider.spid.site.number.billing.tooltip' | translate}}</kc-tooltip>
+                <kc-tooltip>{{:: 'identity-provider.spid.site.addressNumber.billing.tooltip' | translate}}</kc-tooltip>
             </div>
             <div class="form-group" data-ng-show="identityProvider.config.otherContactIsSpPrivate == 'true'">
                 <label class="col-md-2 control-label" for="billingContactSiteCity">{{:: 'identity-provider.spid.site.city.billing' | translate}}</label>
@@ -441,11 +442,11 @@
                 <kc-tooltip>{{:: 'identity-provider.spid.site.city.billing.tooltip' | translate}}</kc-tooltip>
             </div>
             <div class="form-group" data-ng-show="identityProvider.config.otherContactIsSpPrivate == 'true'">
-                <label class="col-md-2 control-label" for="billingContactSitePostalCode">{{:: 'identity-provider.spid.site.postalCode.billing' | translate}}</label>
+                <label class="col-md-2 control-label" for="billingContactSiteZipCode">{{:: 'identity-provider.spid.site.zipCode.billing' | translate}}</label>
                 <div class="col-md-6">
-                    <input class="form-control" id="billingContactSitePostalCode" type="text" ng-model="identityProvider.config.billingContactSitePostalCode"/>
+                    <input class="form-control" id="billingContactSiteZipCode" type="text" ng-model="identityProvider.config.billingContactSiteZipCode"/>
                 </div>
-                <kc-tooltip>{{:: 'identity-provider.spid.site.postalCode.billing' | translate}}</kc-tooltip>
+                <kc-tooltip>{{:: 'identity-provider.spid.site.zipCode.billing' | translate}}</kc-tooltip>
             </div>
             <div class="form-group" data-ng-show="identityProvider.config.otherContactIsSpPrivate == 'true'">
                 <label class="col-md-2 control-label" for="billingContactSiteProvince">{{:: 'identity-provider.spid.site.province.billing' | translate}}</label>

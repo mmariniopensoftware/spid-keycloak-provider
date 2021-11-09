@@ -76,7 +76,7 @@ public class SpidIdentityProviderConfig extends IdentityProviderModel {
     public static final String BILLING_CONTACT_SITE_ADDRESS = "billingContactSiteAddress";
     public static final String BILLING_CONTACT_SITE_NUMBER = "billingContactSiteNumber";
     public static final String BILLING_CONTACT_SITE_CITY = "billingContactSiteCity";
-    public static final String BILLING_CONTACT_SITE_POSTAL_CODE = "billingContactSitePostalCode";
+    public static final String BILLING_CONTACT_SITE_POSTAL_CODE = "billingContactSiteZipCode";
     public static final String BILLING_CONTACT_SITE_PROVINCE = "billingContactSiteProvince";
     public static final String BILLING_CONTACT_SITE_COUNTRY = "billingContactSiteCountry";
 
